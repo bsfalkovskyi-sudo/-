@@ -83,8 +83,8 @@ LOGIN_TEMPLATE = """
   <link rel="icon" href="/logo1/logo.ico" type="image/x-icon">
   <style>
     * { box-sizing:border-box; }
-    body { margin:0; font-family: Inter, sans-serif; background:#0b1220; color:#e5e7eb; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-    .auth-layout { width:min(1080px,100%); min-height:min(640px,90vh); display:grid; grid-template-columns:1fr 1fr; background:#0f172a; border:1px solid #334155; border-radius:20px; overflow:hidden; box-shadow:0 24px 50px rgba(0,0,0,.45); }
+    body { margin:0; font-family: Inter, sans-serif; background:#0b1220; color:#e5e7eb; min-height:100vh; }
+    .auth-layout { width:100vw; min-height:100vh; display:grid; grid-template-columns:1fr 1fr; background:#0f172a; overflow:hidden; }
     .auth-left { background:#fff; color:#0f172a; border-top-right-radius:56px; border-bottom-right-radius:56px; display:flex; align-items:center; justify-content:center; padding:24px; }
     .auth-logo { max-width:70%; max-height:70%; object-fit:contain; }
     .auth-logo-placeholder { text-align:center; color:#64748b; font-size:.95rem; line-height:1.5; max-width:320px; }
@@ -99,10 +99,10 @@ LOGIN_TEMPLATE = """
     .err { color:#fecaca; background:#450a0a; border:1px solid #7f1d1d; border-radius:8px; padding:8px; margin-bottom:10px; display:none; }
     .ok { color:#bbf7d0; background:#052e16; border:1px solid #166534; border-radius:8px; padding:8px; margin-bottom:10px; display:none; }
     .hidden { display:none; }
-    @media (max-width: 900px) {
-      .auth-layout { grid-template-columns:1fr; min-height:auto; }
-      .auth-left { min-height:220px; border-top-right-radius:0; border-bottom-left-radius:56px; border-bottom-right-radius:56px; }
-    }
+	    @media (max-width: 900px) {
+	      .auth-layout { grid-template-columns:1fr; min-height:100vh; }
+	      .auth-left { min-height:220px; border-top-right-radius:0; border-bottom-left-radius:56px; border-bottom-right-radius:56px; }
+	    }
   </style>
 </head>
 <body>
