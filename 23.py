@@ -70,6 +70,7 @@ LOGO_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".svg")
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("GATEWAY_SECRET_KEY", "change-this-secret")
+app.config["SESSION_COOKIE_NAME"] = os.environ.get("GATEWAY_SESSION_COOKIE_NAME", "gateway_session")
 child_processes: Dict[str, subprocess.Popen] = {}
 _shutdown_started = False
 
@@ -1910,7 +1911,12 @@ PAGE_TEMPLATE = """
       reader.readAsDataURL(file);
     });
 
-    fetchMe().then(() => setupCalendarForCurrentUser());
+     fetchMe().then((me) => {
+      setupCalendarForCurrentUser();
+      if (me?.username === "Богдан") {
+        loadCarouselImages();
+      }
+    });
     refreshZhytomyrAlertReason();
     setInterval(refreshZhytomyrAlertReason, 30000);
     computePingTargets();
