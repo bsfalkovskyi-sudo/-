@@ -1066,6 +1066,17 @@ PAGE_TEMPLATE = """
       <div id="bohdanCarouselSection" class="sound-only hide-on-notifications hide-on-users" style="display:none; margin-top:12px; border-top:1px solid var(--panel-border); padding-top:10px;">
         <h4 style="margin:0 0 8px;">Карусель фото для мапи тривог</h4>
         <div class="field">
+          <label for="carouselAlbumNameInput">Назва нового альбому</label>
+          <input id="carouselAlbumNameInput" type="text" maxlength="80" placeholder="Напр. Тривога — Житомир" />
+        </div>
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button id="createCarouselAlbumBtn" type="button" class="modal-btn">Створити альбом</button>
+        </div>
+        <div class="field">
+          <label for="carouselAlbumSelect">Активний альбом для прокрутки</label>
+          <select id="carouselAlbumSelect"></select>
+        </div>
+        <div class="field">
           <label for="carouselUploadInput">Додати фото (одне або декілька)</label>
           <input id="carouselUploadInput" type="file" accept="image/*" multiple />
         </div>
@@ -1174,6 +1185,9 @@ PAGE_TEMPLATE = """
     const carouselUploadInput = document.getElementById("carouselUploadInput");
     const uploadCarouselImagesBtn = document.getElementById("uploadCarouselImagesBtn");
     const carouselThumbs = document.getElementById("carouselThumbs");
+    const carouselAlbumNameInput = document.getElementById("carouselAlbumNameInput");
+    const createCarouselAlbumBtn = document.getElementById("createCarouselAlbumBtn");
+    const carouselAlbumSelect = document.getElementById("carouselAlbumSelect");
     const secretCarouselToggle = document.getElementById("secretCarouselToggle");
     const alertsFrame = document.getElementById("alertsFrame");
     const carouselStage = document.getElementById("carouselStage");
@@ -1199,6 +1213,9 @@ PAGE_TEMPLATE = """
     let carouselIndex = 0;
     let carouselTimer = null;
     let carouselEnabled = false;
+    let carouselPaused = false;
+    let carouselAlbums = [];
+    let activeCarouselAlbumId = null;
     let calendarCurrentView = new Date();
     let calendarControls = {};
     let calendarStorageKey = null;
@@ -1823,8 +1840,24 @@ PAGE_TEMPLATE = """
         carouselStage.appendChild(img);
       });
       carouselIndex = 0;
+      carouselPaused = false;
       showCarouselSlide(0);
     }
+
+    function renderCarouselAlbums() {
+      if (!carouselAlbumSelect) return;
+      carouselAlbumSelect.innerHTML = "";
+      carouselAlbums.forEach((album) => {
+        const option = document.createElement("option");
+        option.value = String(album.id);
+        option.textContent = album.name;
+        carouselAlbumSelect.appendChild(option);
+      });
+      if (activeCarouselAlbumId && carouselAlbums.some((a) => a.id === activeCarouselAlbumId)) {
+        carouselAlbumSelect.value = String(activeCarouselAlbumId);
+      }
+    }
+
 
     function renderCarouselThumbs() {
       if (!carouselThumbs) return;
@@ -1858,6 +1891,7 @@ PAGE_TEMPLATE = """
       if (carouselTimer) clearInterval(carouselTimer);
       if (carouselItems.length <= 1) return;
       carouselTimer = setInterval(() => {
+        if (carouselPaused) return;
         carouselIndex = (carouselIndex + 1) % carouselItems.length;
         showCarouselSlide(carouselIndex);
       }, 30000);
@@ -1865,10 +1899,14 @@ PAGE_TEMPLATE = """
 
     async function loadCarouselImages() {
       if (!secretCarouselToggle) return;
-      const r = await fetch("/api/carousel/images", { cache: "no-store" });
+      const query = activeCarouselAlbumId ? `?album_id=${activeCarouselAlbumId}` : "";
+      const r = await fetch(`/api/carousel/images${query}`, { cache: "no-store" });
       if (!r.ok) return;
       const payload = await r.json();
+      carouselAlbums = Array.isArray(payload.albums) ? payload.albums : [];
+      activeCarouselAlbumId = payload.active_album_id || (carouselAlbums[0] ? carouselAlbums[0].id : null);
       carouselItems = Array.isArray(payload.items) ? payload.items : [];
+      renderCarouselAlbums();
       renderCarouselImages();
       renderCarouselThumbs();
       startCarousel();
@@ -2020,6 +2058,42 @@ PAGE_TEMPLATE = """
         setCarouselEnabled(!carouselEnabled);
       });
     }
+    if (carouselStage) {
+      carouselStage.addEventListener("click", () => {
+        if (!carouselEnabled || carouselItems.length <= 1) return;
+        carouselPaused = !carouselPaused;
+      });
+    }
+    if (carouselAlbumSelect) {
+      carouselAlbumSelect.addEventListener("change", async () => {
+        const albumId = Number(carouselAlbumSelect.value);
+        activeCarouselAlbumId = Number.isFinite(albumId) ? albumId : null;
+        await loadCarouselImages();
+      });
+    }
+    if (createCarouselAlbumBtn) {
+      createCarouselAlbumBtn.addEventListener("click", async () => {
+        if (authMe?.username !== "Богдан") return;
+        const name = (carouselAlbumNameInput.value || "").trim();
+        if (!name) {
+          alert("Введіть назву альбому.");
+          return;
+        }
+        const r = await fetch("/api/carousel/albums", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (!r.ok) {
+          alert("Не вдалося створити альбом.");
+          return;
+        }
+        const payload = await r.json();
+        carouselAlbumNameInput.value = "";
+        activeCarouselAlbumId = payload.id;
+        await loadCarouselImages();
+      });
+    }
     if (uploadCarouselImagesBtn) {
       uploadCarouselImagesBtn.addEventListener("click", async () => {
         if (authMe?.username !== "Богдан") return;
@@ -2029,6 +2103,7 @@ PAGE_TEMPLATE = """
           return;
         }
         const formData = new FormData();
+        if (activeCarouselAlbumId) formData.append("album_id", String(activeCarouselAlbumId));
         Array.from(files).forEach((file) => formData.append("images", file));
         const r = await fetch("/api/carousel/images", { method: "POST", body: formData });
         if (!r.ok) {
@@ -2109,13 +2184,59 @@ def _init_auth_storage() -> None:
         )
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS carousel_images (
+            CREATE TABLE IF NOT EXISTS carousel_albums (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_name TEXT UNIQUE NOT NULL,
+                name TEXT UNIQUE NOT NULL,
                 created_at INTEGER NOT NULL
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS carousel_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                album_id INTEGER NOT NULL,
+                file_name TEXT UNIQUE NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (album_id) REFERENCES carousel_albums(id) ON DELETE CASCADE
+            )
+            """
+        )
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(carousel_images)").fetchall()]
+        if "album_id" not in columns:
+            conn.execute("ALTER TABLE carousel_images RENAME TO carousel_images_old")
+            conn.execute(
+                """
+                CREATE TABLE carousel_images (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    album_id INTEGER NOT NULL,
+                    file_name TEXT UNIQUE NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (album_id) REFERENCES carousel_albums(id) ON DELETE CASCADE
+                )
+                """
+            )
+            default_album = conn.execute("SELECT id FROM carousel_albums ORDER BY id ASC LIMIT 1").fetchone()
+            if default_album is None:
+                conn.execute(
+                    "INSERT INTO carousel_albums (name, created_at) VALUES (?, ?)",
+                    ("Основний", int(time.time())),
+                )
+                default_album = conn.execute("SELECT id FROM carousel_albums ORDER BY id DESC LIMIT 1").fetchone()
+            conn.execute(
+                """
+                INSERT INTO carousel_images (id, album_id, file_name, created_at)
+                SELECT id, ?, file_name, created_at FROM carousel_images_old
+                """,
+                (default_album["id"],),
+            )
+            conn.execute("DROP TABLE carousel_images_old")
+        album_exists = conn.execute("SELECT id FROM carousel_albums ORDER BY id ASC LIMIT 1").fetchone()
+        if album_exists is None:
+            conn.execute(
+                "INSERT INTO carousel_albums (name, created_at) VALUES (?, ?)",
+                ("Основний", int(time.time())),
+            )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS pending_users (
@@ -2376,6 +2497,29 @@ def admin_users_transfer_admin_api(user_id: int):
     return jsonify({"ok": True})
 
 
+@app.route("/api/carousel/albums", methods=["POST"])
+@_require_login
+def carousel_albums_api():
+    user = _current_user()
+    if user is None or user["username"] != "Богдан":
+        return jsonify({"error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    if len(name) < 2:
+        return jsonify({"error": "invalid name"}), 400
+    with _db_conn() as conn:
+        exists = conn.execute("SELECT id FROM carousel_albums WHERE lower(name) = lower(?)", (name,)).fetchone()
+        if exists is not None:
+            return jsonify({"error": "album exists"}), 409
+        cursor = conn.execute(
+            "INSERT INTO carousel_albums (name, created_at) VALUES (?, ?)",
+            (name[:80], int(time.time())),
+        )
+        conn.commit()
+        album_id = cursor.lastrowid
+    return jsonify({"ok": True, "id": album_id})
+
+
 @app.route("/api/carousel/images", methods=["GET", "POST"])
 @_require_login
 def carousel_images_api():
@@ -2386,19 +2530,43 @@ def carousel_images_api():
     if request.method == "GET":
         if user["username"] != "Богдан":
             return jsonify({"items": []})
+        requested_album_id = request.args.get("album_id", type=int)
         with _db_conn() as conn:
-            rows = conn.execute("SELECT id, file_name FROM carousel_images ORDER BY created_at DESC").fetchall()
+            albums = conn.execute("SELECT id, name FROM carousel_albums ORDER BY created_at ASC, id ASC").fetchall()
+            active_album_id = requested_album_id or (albums[0]["id"] if albums else None)
+            if active_album_id is None:
+                rows = []
+            else:
+                rows = conn.execute(
+                    "SELECT id, file_name FROM carousel_images WHERE album_id = ? ORDER BY created_at DESC",
+                    (active_album_id,),
+                ).fetchall()
         items = [{"id": row["id"], "url": url_for("carousel_image_file_api", file_name=row["file_name"])} for row in rows]
-        return jsonify({"items": items})
+        return jsonify(
+            {
+                "items": items,
+                "albums": [{"id": row["id"], "name": row["name"]} for row in albums],
+                "active_album_id": active_album_id,
+            }
+        )
 
     if user["username"] != "Богдан":
         return jsonify({"error": "forbidden"}), 403
 
     files = request.files.getlist("images")
+    album_id = request.form.get("album_id", type=int)
     if not files:
         return jsonify({"error": "images required"}), 400
     saved = 0
     with _db_conn() as conn:
+        if album_id is None:
+            row = conn.execute("SELECT id FROM carousel_albums ORDER BY created_at ASC, id ASC LIMIT 1").fetchone()
+            if row is None:
+                return jsonify({"error": "album required"}), 400
+            album_id = row["id"]
+        album = conn.execute("SELECT id FROM carousel_albums WHERE id = ?", (album_id,)).fetchone()
+        if album is None:
+            return jsonify({"error": "album not found"}), 404
         for file in files:
             if not file or not file.filename:
                 continue
@@ -2408,8 +2576,8 @@ def carousel_images_api():
             name = f"{int(time.time()*1000)}_{os.urandom(4).hex()}{ext}"
             file.save(CAROUSEL_DIR / name)
             conn.execute(
-                "INSERT INTO carousel_images (file_name, created_at) VALUES (?, ?)",
-                (name, int(time.time())),
+                "INSERT INTO carousel_images (album_id, file_name, created_at) VALUES (?, ?, ?)",
+                (album_id, name, int(time.time())),
             )
             saved += 1
         conn.commit()
